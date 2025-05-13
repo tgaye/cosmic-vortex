@@ -1,0 +1,368 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmic Vortex</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+        #info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            font-size: 12px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+    </style>
+
+<base target="_self">
+
+
+    </head><body><div id="canvas-container"></div>
+    <div id="info">Move mouse to distort spacetime. Click to intensify.</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+    <script>
+        const sketch = (p) => {
+            let particles = [];
+            let blackHole;
+            let distortionFactor = 0;
+            let maxParticles = 2000;
+            let particleCount = 800;
+            let hueOffset = 0;
+            let lastMouseX = 0;
+            let lastMouseY = 0;
+            let mouseVelocity = 0;
+            let bgGraphics;
+            let starfield = [];
+            let accretionDisk = [];
+            let time = 0;
+            let interactionIntensity = 0;
+
+            class BlackHole {
+                constructor(x, y, mass) {
+                    this.pos = p.createVector(x, y);
+                    this.mass = mass;
+                    this.radius = mass * 0.5;
+                    this.eventHorizon = this.radius * 1.5;
+                    this.glow = 0;
+                }
+
+                update() {
+                    this.glow = p.lerp(this.glow, interactionIntensity * 10, 0.05);
+                }
+
+                display() {
+                    // Event horizon
+                    p.noStroke();
+                    let gradient = p.drawingContext.createRadialGradient(
+                        this.pos.x, this.pos.y, this.radius * 0.5,
+                        this.pos.x, this.pos.y, this.eventHorizon
+                    );
+                    gradient.addColorStop(0, p.color(0, 0, 0, 0));
+                    gradient.addColorStop(0.8, p.color(20, 10, 40, 200));
+                    gradient.addColorStop(1, p.color(50, 20, 80, 0));
+                    p.drawingContext.fillStyle = gradient;
+                    p.ellipse(this.pos.x, this.pos.y, this.eventHorizon * 2, this.eventHorizon * 2);
+
+                    // Singularity glow
+                    let glowSize = this.radius * (1 + this.glow * 0.2);
+                    let glowColor1 = p.color(100, 80, 255, 30 * (1 + this.glow));
+                    let glowColor2 = p.color(0, 0, 0, 0);
+                    p.drawingContext.fillStyle = p.drawingContext.createRadialGradient(
+                        this.pos.x, this.pos.y, 0,
+                        this.pos.x, this.pos.y, glowSize
+                    );
+                    p.drawingContext.fillStyle.addColorStop(0, glowColor1);
+                    p.drawingContext.fillStyle.addColorStop(1, glowColor2);
+                    p.ellipse(this.pos.x, this.pos.y, glowSize * 2, glowSize * 2);
+                }
+            }
+
+            class Particle {
+                constructor() {
+                    this.reset();
+                    this.z = p.random(0.5, 3);
+                    this.originalPos = this.pos.copy();
+                }
+
+                reset() {
+                    let angle = p.random(p.TWO_PI);
+                    let distance = p.random(100, p.width/2);
+                    this.pos = p.createVector(
+                        p.width/2 + p.cos(angle) * distance,
+                        p.height/2 + p.sin(angle) * distance
+                    );
+                    this.vel = p5.Vector.random2D().mult(0.1);
+                    this.acc = p.createVector(0, 0);
+                    this.size = p.random(1, 3);
+                    this.hue = p.random(200, 300);
+                    this.life = p.random(100, 200);
+                    this.maxLife = this.life;
+                }
+
+                applyForce(force) {
+                    this.acc.add(force);
+                }
+
+                update() {
+                    this.vel.add(this.acc);
+                    this.pos.add(this.vel);
+                    this.acc.mult(0);
+                    this.life--;
+
+                    if (this.life <= 0 || this.pos.dist(blackHole.pos) < blackHole.radius * 2) {
+                        this.reset();
+                    }
+                }
+
+                display() {
+                    let distanceToBlackHole = this.pos.dist(blackHole.pos);
+                    let gravityFactor = p.constrain(blackHole.mass * 50 / (distanceToBlackHole * distanceToBlackHole), 0, 10);
+
+                    // Calculate gravitational lensing effect
+                    let dirToBlackHole = p5.Vector.sub(blackHole.pos, this.pos).normalize();
+                    let lensedPos = p5.Vector.lerp(
+                        this.pos,
+                        p5.Vector.add(this.pos, p5.Vector.mult(dirToBlackHole, gravityFactor * 5 * distortionFactor)),
+                        0.5
+                    );
+
+                    let alpha = p.map(this.life, 0, this.maxLife, 0, 200);
+                    let size = this.size * (1 + gravityFactor * 0.1);
+
+                    // Blueshift/redshift effect
+                    let velocityDot = p5.Vector.dot(this.vel, dirToBlackHole);
+                    let hueShift = p.map(velocityDot, -1, 1, -30, 30);
+                    let hue = (this.hue + hueShift + hueOffset) % 360;
+
+                    p.fill(hue, 80, 80, alpha);
+                    p.noStroke();
+                    p.ellipse(lensedPos.x, lensedPos.y, size, size);
+                }
+            }
+
+            class AccretionParticle {
+                constructor() {
+                    this.angle = p.random(p.TWO_PI);
+                    this.distance = p.random(blackHole.radius * 2, blackHole.radius * 6);
+                    this.speed = p.random(0.01, 0.03) * (p.random() > 0.5 ? 1 : -1);
+                    this.size = p.random(1, 4);
+                    this.hue = p.random(20, 50);
+                    this.brightness = p.random(60, 100);
+                    this.z = p.random(0.5, 2);
+                }
+
+                update() {
+                    this.angle += this.speed * (1 + interactionIntensity * 0.5);
+                    this.distance = p.lerp(this.distance, blackHole.radius * (2 + interactionIntensity * 2), 0.01);
+                }
+
+                display() {
+                    let x = blackHole.pos.x + p.cos(this.angle) * this.distance;
+                    let y = blackHole.pos.y + p.sin(this.angle) * this.distance;
+
+                    // Doppler effect
+                    let velocity = this.speed * this.distance;
+                    let dirToBlackHole = p5.Vector.sub(blackHole.pos, p.createVector(x, y)).normalize();
+                    let tangent = p.createVector(-dirToBlackHole.y, dirToBlackHole.x);
+                    let velocityDot = p5.Vector.dot(tangent, p.createVector(p.cos(this.angle), p.sin(this.angle)));
+                    
+                    let hueShift = p.map(velocityDot, -1, 1, -20, 20);
+                    let hue = (this.hue + hueShift) % 360;
+                    let brightness = this.brightness * (1 + interactionIntensity * 0.5);
+
+                    p.fill(hue, 100, brightness, 150);
+                    p.noStroke();
+                    p.ellipse(x, y, this.size, this.size);
+                }
+            }
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                p.noStroke();
+
+                blackHole = new BlackHole(p.width/2, p.height/2, 50);
+
+                // Create particles
+                for (let i = 0; i < particleCount; i++) {
+                    particles.push(new Particle());
+                }
+
+                // Create accretion disk
+                for (let i = 0; i < 300; i++) {
+                    accretionDisk.push(new AccretionParticle());
+                }
+
+                // Create starfield
+                for (let i = 0; i < 500; i++) {
+                    starfield.push({
+                        x: p.random(p.width),
+                        y: p.random(p.height),
+                        z: p.random(0.5, 5),
+                        size: p.random(0.5, 2)
+                    });
+                }
+
+                bgGraphics = p.createGraphics(p.width, p.height);
+                drawBackground();
+            };
+
+            function drawBackground() {
+                bgGraphics.clear();
+                bgGraphics.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                // Cosmic gradient
+                let gradient = bgGraphics.drawingContext.createLinearGradient(0, 0, 0, p.height);
+                gradient.addColorStop(0, p.color(270, 80, 10));
+                gradient.addColorStop(1, p.color(280, 90, 5));
+                bgGraphics.drawingContext.fillStyle = gradient;
+                bgGraphics.rect(0, 0, p.width, p.height);
+
+                // Nebula effect
+                for (let i = 0; i < 5; i++) {
+                    let x = p.random(p.width);
+                    let y = p.random(p.height);
+                    let radius = p.random(100, 300);
+                    let hue = p.random(250, 300);
+                    let alpha = p.random(0.02, 0.05);
+                    
+                    let nebulaGradient = bgGraphics.drawingContext.createRadialGradient(
+                        x, y, 0,
+                        x, y, radius
+                    );
+                    nebulaGradient.addColorStop(0, p.color(hue, 50, 30, alpha));
+                    nebulaGradient.addColorStop(1, p.color(hue, 50, 10, 0));
+                    bgGraphics.drawingContext.fillStyle = nebulaGradient;
+                    bgGraphics.ellipse(x, y, radius * 2, radius * 2);
+                }
+            }
+
+            p.draw = () => {
+                // Update time
+                time += 0.01;
+                hueOffset = p.sin(time * 0.5) * 10;
+
+                // Calculate mouse velocity
+                mouseVelocity = p.dist(p.mouseX, p.mouseY, lastMouseX, lastMouseY);
+                lastMouseX = p.mouseX;
+                lastMouseY = p.mouseY;
+
+                // Update interaction intensity
+                interactionIntensity = p.lerp(interactionIntensity, p.constrain(mouseVelocity * 0.01, 0, 1), 0.1);
+
+                // Set distortion based on mouse position
+                if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                    let mouseDist = p.dist(p.mouseX, p.mouseY, blackHole.pos.x, blackHole.pos.y);
+                    distortionFactor = p.lerp(distortionFactor, p.map(mouseDist, 0, p.width/2, 1, 0.2), 0.1);
+                } else {
+                    distortionFactor = p.lerp(distortionFactor, 0.5, 0.1);
+                }
+
+                // Draw background
+                p.image(bgGraphics, 0, 0);
+
+                // Draw starfield
+                p.push();
+                p.blendMode(p.ADD);
+                for (let star of starfield) {
+                    let twinkle = p.noise(star.x * 0.01, star.y * 0.01, time) * 100;
+                    p.fill(60, 10, twinkle, 0.8);
+                    p.ellipse(star.x, star.y, star.size, star.size);
+                }
+                p.pop();
+
+                // Update black hole
+                blackHole.update();
+
+                // Update and display accretion disk
+                p.push();
+                p.blendMode(p.ADD);
+                for (let particle of accretionDisk) {
+                    particle.update();
+                    particle.display();
+                }
+                p.pop();
+
+                // Update and display particles with gravitational effects
+                p.push();
+                p.blendMode(p.ADD);
+                for (let particle of particles) {
+                    // Apply gravity toward black hole
+                    let gravity = p5.Vector.sub(blackHole.pos, particle.pos);
+                    let distanceSq = gravity.magSq();
+                    gravity.normalize();
+                    gravity.mult(blackHole.mass * 10 / distanceSq);
+                    particle.applyForce(gravity);
+
+                    // Apply repulsion from mouse
+                    if (p.mouseX > 0 && p.mouseX < p.width && p.mouseY > 0 && p.mouseY < p.height) {
+                        let mouseDist = p.dist(particle.pos.x, particle.pos.y, p.mouseX, p.mouseY);
+                        if (mouseDist < 150) {
+                            let repulsion = p5.Vector.sub(particle.pos, p.createVector(p.mouseX, p.mouseY));
+                            repulsion.normalize();
+                            repulsion.mult(50 / mouseDist);
+                            particle.applyForce(repulsion);
+                        }
+                    }
+
+                    particle.update();
+                    particle.display();
+                }
+                p.pop();
+
+                // Display black hole (on top of particles)
+                blackHole.display();
+
+                // Visual feedback for interaction
+                if (interactionIntensity > 0.1) {
+                    p.push();
+                    p.blendMode(p.ADD);
+                    let pulseSize = blackHole.radius * 2 * (1 + interactionIntensity * 2);
+                    let pulseAlpha = interactionIntensity * 100;
+                    let pulseColor = p.color(280, 80, 100, pulseAlpha);
+                    p.fill(pulseColor);
+                    p.ellipse(blackHole.pos.x, blackHole.pos.y, pulseSize, pulseSize);
+                    p.pop();
+                }
+            };
+
+            p.mousePressed = () => {
+                // Increase intensity on click
+                interactionIntensity = p.min(interactionIntensity + 0.5, 2);
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                drawBackground();
+            };
+        };
+
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
